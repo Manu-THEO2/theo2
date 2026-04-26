@@ -615,7 +615,7 @@ body{font-family:'Nunito',system-ui,sans-serif;background:var(--bg);color:var(--
 <script>
 const SUPABASE_URL = 'https://xprcdvuztrwunajscrns.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_-cDZ2pa2eYlHD6oPc7bU1A_Kiw0XHGm';
-const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let db = { accompagnants:[], beneficiaires:[], institutions:[], associations:[], sorties:[], saisons:[] };
 let filters = { acc:'tous', ben:'tous' };
@@ -659,7 +659,7 @@ async function doLogin() {
   if(!email||!pwd) return;
   const btn = document.querySelector('.login-btn');
   btn.textContent = 'Connexion...'; btn.disabled = true;
-  const { error } = await supabase.auth.signInWithPassword({ email, password: pwd });
+  const { error } = await sb.auth.signInWithPassword({ email, password: pwd });
   btn.textContent = 'Se connecter →'; btn.disabled = false;
   if(error) { q('login-err').style.display='block'; return; }
   q('login-err').style.display='none';
@@ -667,7 +667,7 @@ async function doLogin() {
 }
 
 async function doLogout() {
-  await supabase.auth.signOut();
+  await sb.auth.signOut();
   q('app-screen').style.display='none';
   q('login-screen').style.display='flex';
 }
@@ -678,7 +678,7 @@ q('login-password').addEventListener('keydown', e => { if(e.key==='Enter') doLog
 async function initApp() {
   q('login-screen').style.display='none';
   q('app-screen').style.display='block';
-  const { data:{ user } } = await supabase.auth.getUser();
+  const { data:{ user } } = await sb.auth.getUser();
   if(user) q('nav-email').textContent = user.email;
   await loadAll();
   renderDashboard();
@@ -687,12 +687,12 @@ async function initApp() {
 
 async function loadAll() {
   const [acc, ben, inst, asso, sorties, saisons] = await Promise.all([
-    supabase.from('accompagnants').select('*').eq('actif',true).order('nom'),
-    supabase.from('beneficiaires').select('*').eq('actif',true).order('nom'),
-    supabase.from('institutions').select('*').eq('actif',true).order('nom'),
-    supabase.from('associations').select('*').eq('actif',true).order('nom'),
-    supabase.from('sorties').select('*').order('date_sortie'),
-    supabase.from('saisons').select('*').order('date_debut'),
+    sb.from('accompagnants').select('*').eq('actif',true).order('nom'),
+    sb.from('beneficiaires').select('*').eq('actif',true).order('nom'),
+    sb.from('institutions').select('*').eq('actif',true).order('nom'),
+    sb.from('associations').select('*').eq('actif',true).order('nom'),
+    sb.from('sorties').select('*').order('date_sortie'),
+    sb.from('saisons').select('*').order('date_debut'),
   ]);
   db.accompagnants = acc.data || [];
   db.beneficiaires = ben.data || [];
@@ -808,8 +808,8 @@ async function openSortieDetail(id) {
 
   // Charger dispos et inscriptions
   const [dispos, inscrits] = await Promise.all([
-    supabase.from('disponibilites').select('*').eq('sortie_id',id),
-    supabase.from('inscriptions').select('*').eq('sortie_id',id),
+    sb.from('disponibilites').select('*').eq('sortie_id',id),
+    sb.from('inscriptions').select('*').eq('sortie_id',id),
   ]);
   const dispoMap = {};
   (dispos.data||[]).forEach(d=>{ dispoMap[d.accompagnant_id]=d.disponible; });
@@ -839,11 +839,11 @@ async function openSortieDetail(id) {
 
 async function toggleDispo(accId, sortieId, el) {
   const on = el.classList.toggle('on');
-  const { data:existing } = await supabase.from('disponibilites').select('id').eq('sortie_id',sortieId).eq('accompagnant_id',accId).single();
+  const { data:existing } = await sb.from('disponibilites').select('id').eq('sortie_id',sortieId).eq('accompagnant_id',accId).single();
   if(existing) {
-    await supabase.from('disponibilites').update({disponible:on}).eq('id',existing.id);
+    await sb.from('disponibilites').update({disponible:on}).eq('id',existing.id);
   } else {
-    await supabase.from('disponibilites').insert({sortie_id:sortieId,accompagnant_id:accId,disponible:on});
+    await sb.from('disponibilites').insert({sortie_id:sortieId,accompagnant_id:accId,disponible:on});
   }
   // Recalculer statut validable
   await recalcStatut(sortieId);
@@ -854,7 +854,7 @@ async function recalcStatut(sortieId) {
   if(!s || s.statut==='validee' || s.statut==='annulee') return;
   const saison = db.saisons.find(sa=>sa.id===s.saison_id);
   if(!saison) return;
-  const { data:dispos } = await supabase.from('disponibilites').select('accompagnant_id').eq('sortie_id',sortieId).eq('disponible',true);
+  const { data:dispos } = await sb.from('disponibilites').select('accompagnant_id').eq('sortie_id',sortieId).eq('disponible',true);
   const accIds = (dispos||[]).map(d=>d.accompagnant_id);
   const accDispos = db.accompagnants.filter(a=>accIds.includes(a.id));
   const pilots = accDispos.filter(a=>(a.aptitudes||[]).includes(saison.type==='tandem'?'tandem':'cimgo'));
@@ -864,7 +864,7 @@ async function recalcStatut(sortieId) {
   const okCond = !saison.conducteur_requis || cond.length>=1;
   const newStatut = (okPilotes&&okTotal&&okCond) ? 'validable' : 'proposee';
   if(newStatut!==s.statut) {
-    await supabase.from('sorties').update({statut:newStatut}).eq('id',sortieId);
+    await sb.from('sorties').update({statut:newStatut}).eq('id',sortieId);
     s.statut = newStatut;
     renderDashboard(); renderSorties();
   }
@@ -873,7 +873,7 @@ async function recalcStatut(sortieId) {
 async function validerSortie() {
   if(!currentSortieId) return;
   if(!confirm('Valider officiellement cette sortie ? Elle sera synchronisée avec Google Calendar.')) return;
-  await supabase.from('sorties').update({statut:'validee'}).eq('id',currentSortieId);
+  await sb.from('sorties').update({statut:'validee'}).eq('id',currentSortieId);
   const s = db.sorties.find(x=>x.id===currentSortieId);
   if(s) s.statut='validee';
   q('sortie-valider-btn').style.display='none';
@@ -901,8 +901,8 @@ function renderInscrits(inscrits, sortieId) {
 }
 
 async function desinscrire(insId, sortieId) {
-  await supabase.from('inscriptions').delete().eq('id',insId);
-  const { data } = await supabase.from('inscriptions').select('*').eq('sortie_id',sortieId);
+  await sb.from('inscriptions').delete().eq('id',insId);
+  const { data } = await sb.from('inscriptions').select('*').eq('sortie_id',sortieId);
   renderInscrits(data||[], sortieId);
   toast('Désinscrit');
 }
@@ -932,7 +932,7 @@ async function inscrire(refId, type) {
   if(!currentSortieId) return;
   const s = db.sorties.find(x=>x.id===currentSortieId);
   // Vérifier mélange institution/famille
-  const { data:existing } = await supabase.from('inscriptions').select('*').eq('sortie_id',currentSortieId);
+  const { data:existing } = await sb.from('inscriptions').select('*').eq('sortie_id',currentSortieId);
   const hasInst = (existing||[]).some(i=>i.type_usager==='institution');
   const hasBen = (existing||[]).some(i=>i.type_usager==='beneficiaire');
   if(type==='institution'&&hasBen) { toast('⚠ Cette sortie a déjà des familles inscrites !'); return; }
@@ -942,12 +942,12 @@ async function inscrire(refId, type) {
   const ins = { sortie_id:currentSortieId, type_usager:type };
   if(type==='beneficiaire') ins.beneficiaire_id=refId;
   else ins.institution_id=refId;
-  await supabase.from('inscriptions').insert(ins);
-  const { data:newList } = await supabase.from('inscriptions').select('*').eq('sortie_id',currentSortieId);
+  await sb.from('inscriptions').insert(ins);
+  const { data:newList } = await sb.from('inscriptions').select('*').eq('sortie_id',currentSortieId);
   renderInscrits(newList||[], currentSortieId);
   toast('✅ Inscrit !');
   // Recharger dispos pour groupes
-  const { data:dispos } = await supabase.from('disponibilites').select('*').eq('sortie_id',currentSortieId);
+  const { data:dispos } = await sb.from('disponibilites').select('*').eq('sortie_id',currentSortieId);
   const saison = db.saisons.find(sa=>sa.id===s.saison_id);
   buildGroupes(dispos||[], newList||[], saison);
 }
@@ -1022,12 +1022,12 @@ async function saveSortie() {
   };
   if(!obj.date_sortie) return;
   if(editing.id) {
-    await supabase.from('sorties').update(obj).eq('id',editing.id);
+    await sb.from('sorties').update(obj).eq('id',editing.id);
     const i=db.sorties.findIndex(x=>x.id===editing.id);
     if(i>=0) db.sorties[i]={...db.sorties[i],...obj};
   } else {
     obj.statut='proposee';
-    const {data}=await supabase.from('sorties').insert(obj).select().single();
+    const {data}=await sb.from('sorties').insert(obj).select().single();
     if(data) db.sorties.push(data);
     db.sorties.sort((a,b)=>a.date_sortie.localeCompare(b.date_sortie));
   }
@@ -1039,7 +1039,7 @@ async function saveSortie() {
 
 async function deleteSortie() {
   if(!editing.id||!confirm('Supprimer cette sortie ?')) return;
-  await supabase.from('sorties').delete().eq('id',editing.id);
+  await sb.from('sorties').delete().eq('id',editing.id);
   db.sorties=db.sorties.filter(x=>x.id!==editing.id);
   closeOv('ov-sortie-form');
   renderDashboard(); renderSorties();
@@ -1239,11 +1239,11 @@ async function saveAcc() {
   const obj={prenom:v('af-prenom'),nom:v('af-nom'),tel:v('af-tel'),mail:v('af-mail'),aptitudes:apt,notes:v('af-notes')};
   if(!obj.nom) return;
   if(editing.id) {
-    await supabase.from('accompagnants').update(obj).eq('id',editing.id);
+    await sb.from('accompagnants').update(obj).eq('id',editing.id);
     const i=db.accompagnants.findIndex(x=>x.id===editing.id);
     if(i>=0) db.accompagnants[i]={...db.accompagnants[i],...obj};
   } else {
-    const {data}=await supabase.from('accompagnants').insert(obj).select().single();
+    const {data}=await sb.from('accompagnants').insert(obj).select().single();
     if(data) db.accompagnants.push(data);
   }
   closeOv('ov-acc'); renderAcc(); toast('✅ Accompagnant enregistré !');
@@ -1253,11 +1253,11 @@ async function saveBen() {
   const obj={prenom:v('bf-prenom'),nom:v('bf-nom'),ddn:v('bf-ddn')||null,handicap:v('bf-handicap'),autonomie:v('bf-autonomie')||null,tel:v('bf-tel'),mail:v('bf-mail'),medical:v('bf-medical'),resp_prenom:v('bf-rp'),resp_nom:v('bf-rn'),lien:v('bf-lien'),resp_tel:v('bf-rt'),resp_mail:v('bf-rm'),don_oui:v('bf-don')==='true',don_montant:parseFloat(v('bf-donmt'))||null,notes:v('bf-notes')};
   if(!obj.prenom&&!obj.nom) return;
   if(editing.id) {
-    await supabase.from('beneficiaires').update(obj).eq('id',editing.id);
+    await sb.from('beneficiaires').update(obj).eq('id',editing.id);
     const i=db.beneficiaires.findIndex(x=>x.id===editing.id);
     if(i>=0) db.beneficiaires[i]={...db.beneficiaires[i],...obj};
   } else {
-    const {data}=await supabase.from('beneficiaires').insert(obj).select().single();
+    const {data}=await sb.from('beneficiaires').insert(obj).select().single();
     if(data) db.beneficiaires.push(data);
   }
   closeOv('ov-ben'); renderBen(); toast('✅ Bénéficiaire enregistré !');
@@ -1267,11 +1267,11 @@ async function saveInst() {
   const obj={nom:v('if-nom'),type:v('if-type')||null,nb_habituel:parseInt(v('if-nb'))||null,adresse:v('if-adresse'),ref_prenom:v('if-rp'),ref_nom:v('if-rn'),ref_tel:v('if-rt'),ref_mail:v('if-rm'),don_oui:v('if-don')==='true',don_montant:parseFloat(v('if-donmt'))||null,notes:v('if-notes')};
   if(!obj.nom) return;
   if(editing.id) {
-    await supabase.from('institutions').update(obj).eq('id',editing.id);
+    await sb.from('institutions').update(obj).eq('id',editing.id);
     const i=db.institutions.findIndex(x=>x.id===editing.id);
     if(i>=0) db.institutions[i]={...db.institutions[i],...obj};
   } else {
-    const {data}=await supabase.from('institutions').insert(obj).select().single();
+    const {data}=await sb.from('institutions').insert(obj).select().single();
     if(data) db.institutions.push(data);
   }
   closeOv('ov-inst'); renderInst(); toast('✅ Institution enregistrée !');
@@ -1281,11 +1281,11 @@ async function saveAsso() {
   const obj={prenom:v('asf-prenom'),nom:v('asf-nom'),association:v('asf-asso'),tel:v('asf-tel'),mail:v('asf-mail'),notes:v('asf-notes')};
   if(!obj.prenom&&!obj.nom&&!obj.association) return;
   if(editing.id) {
-    await supabase.from('associations').update(obj).eq('id',editing.id);
+    await sb.from('associations').update(obj).eq('id',editing.id);
     const i=db.associations.findIndex(x=>x.id===editing.id);
     if(i>=0) db.associations[i]={...db.associations[i],...obj};
   } else {
-    const {data}=await supabase.from('associations').insert(obj).select().single();
+    const {data}=await sb.from('associations').insert(obj).select().single();
     if(data) db.associations.push(data);
   }
   closeOv('ov-asso'); renderAsso(); toast('✅ Association enregistrée !');
@@ -1294,7 +1294,7 @@ async function saveAsso() {
 async function deleteRec(type) {
   if(!editing.id||!confirm('Supprimer cette fiche ?')) return;
   const table={acc:'accompagnants',ben:'beneficiaires',inst:'institutions',asso:'associations'}[type];
-  await supabase.from(table).update({actif:false}).eq('id',editing.id);
+  await sb.from(table).update({actif:false}).eq('id',editing.id);
   db[table.replace('accompagnants','accompagnants').replace('beneficiaires','beneficiaires')]=
     (db[{acc:'accompagnants',ben:'beneficiaires',inst:'institutions',asso:'associations'}[type]]||[]).filter(x=>x.id!==editing.id);
   closeOv('ov-'+type); renderContacts(); toast('🗑 Fiche supprimée');
@@ -1363,7 +1363,7 @@ document.querySelectorAll('.ov').forEach(o=>o.addEventListener('click',e=>{ if(e
 
 // ── CHECK SESSION ──
 (async () => {
-  const { data:{ session } } = await supabase.auth.getSession();
+  const { data:{ session } } = await sb.auth.getSession();
   if(session) { initApp(); }
 })();
 </script>
